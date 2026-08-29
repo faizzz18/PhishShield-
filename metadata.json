@@ -1,0 +1,8 @@
+{
+  "name": "PhishShield AI",
+  "description": "AI-powered Phishing Link & Suspicious Message Threat Analyzer with real-time heuristic security scoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
