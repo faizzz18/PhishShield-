@@ -15,6 +15,8 @@ import { AboutSection } from './components/AboutSection';
 import { Footer } from './components/Footer';
 import { SecurityAnalysisResult } from './types';
 import { analyzeTarget } from './utils/heuristicEngine';
+import { supabase } from './lib/supabase';
+import { mapSupabaseAnalysisResponse } from './utils/supabaseMapper';
 import { cyberSound } from './utils/cyberSoundEffects';
 import { Zap, ShieldCheck, ArrowRight, X } from 'lucide-react';
 
@@ -76,7 +78,7 @@ export default function App() {
     }
   };
 
-  const handleAnalyze = (type: 'url' | 'message', input: string) => {
+  const handleAnalyze = async (type: 'url' | 'message', input: string) => {
     cyberSound.playScan();
     setCurrentScanTarget({ type, value: input });
     setIsScanning(true);
@@ -90,13 +92,50 @@ export default function App() {
       }
     }, 100);
 
-    // Simulate cyber AI neural analysis pipeline (approx 2.4s)
-    setTimeout(() => {
-      const result = analyzeTarget(type, input);
-      setAnalysisResult(result);
-      setIsScanning(false);
-      
-      if (result.riskScore >= 60) {
+    // Smooth minimum scanning pulse duration (350ms) to ensure smooth cyber animation without artificial long lag
+    const minDelayPromise = new Promise((resolve) => setTimeout(resolve, 350));
+
+    try {
+      let finalResult: SecurityAnalysisResult;
+
+      if (type === 'url') {
+        const { data, error } = await supabase.functions.invoke(
+          'analyze-url',
+          {
+            body: { url: input }
+          }
+        );
+
+        if (error) {
+          console.warn('[Supabase Edge Function: analyze-url] Returned error, using fallback:', error);
+          finalResult = analyzeTarget(type, input);
+        } else if (data) {
+          finalResult = mapSupabaseAnalysisResponse(data, type, input);
+        } else {
+          finalResult = analyzeTarget(type, input);
+        }
+      } else {
+        const { data, error } = await supabase.functions.invoke(
+          'analyze-text',
+          {
+            body: { text: input }
+          }
+        );
+
+        if (error) {
+          console.warn('[Supabase Edge Function: analyze-text] Returned error, using fallback:', error);
+          finalResult = analyzeTarget(type, input);
+        } else if (data) {
+          finalResult = mapSupabaseAnalysisResponse(data, type, input);
+        } else {
+          finalResult = analyzeTarget(type, input);
+        }
+      }
+
+      await minDelayPromise;
+      setAnalysisResult(finalResult);
+
+      if (finalResult.riskScore >= 60) {
         cyberSound.playAlarm();
       } else {
         cyberSound.playSuccess();
@@ -109,7 +148,19 @@ export default function App() {
           resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }, 150);
-    }, 2400);
+
+    } catch (err) {
+      console.error('[PhishShield] Backend execution exception, applying heuristic fallback:', err);
+      const fallbackResult = analyzeTarget(type, input);
+      setAnalysisResult(fallbackResult);
+      if (fallbackResult.riskScore >= 60) {
+        cyberSound.playAlarm();
+      } else {
+        cyberSound.playSuccess();
+      }
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleSelectSimulatedThreat = (type: 'url' | 'message', payload: string) => {
